@@ -365,29 +365,55 @@ function createCoverSpan(text) {
     cover.className = 'slop-cover'
     cover.textContent = text
 
-    cover.style.cursor = 'pointer'
-    cover.style.position = 'relative'
-
-    // const originalStyle = cover.style.cssText
-    // cover.style.cssText = coveredCSS
     cover.style.setProperty('--slop-image-url', `url("${SLOP_URL}")`)
-    cover.classList.add('hts-uncovered')
 
-    cover.addEventListener('click', () => {
-        // if (!cover.classList.contains('hts-uncovered')) {
-        //     cover.style.cssText = originalStyle
-        // } else {
-        //     cover.style.cssText = coveredCSS
-        //     cover.classList.remove('hts-uncovered')
-        // }
-    })
+    // Paint the textured overlays once the span has been laid out so we can
+    // read its per-line geometry.
+    requestAnimationFrame(() => paintCover(cover))
 
-    const originalOutline = cover.style.outline
-    cover.addEventListener('mouseover', () => { cover.style.outline = '1px solid black' })
-    cover.addEventListener('mouseout', () => { cover.style.outline = originalOutline })
+    cover.addEventListener('mouseover', () => { cover.querySelectorAll('.slop-overlay').forEach(i => i.style.opacity = 0.1) })
+    cover.addEventListener('mouseout', () => { cover.querySelectorAll('.slop-overlay').forEach(i => i.style.opacity = 0.8) })
 
     return cover
 }
+
+// Build one overlay per line box so the texture follows the exact shape of the
+// covered text (the union of every line, including indented wrapped lines)
+// rather than a single bounding rectangle.
+function paintCover(cover) {
+    if (!cover.isConnected) return
+
+    cover.querySelectorAll('.slop-overlay').forEach(o => o.remove())
+
+    // The containing block origin for an absolutely-positioned child of a
+    // multi-line inline element isn't its bounding-box corner, so measure the
+    // real origin with a zero-size probe instead of assuming it.
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0'
+    cover.appendChild(probe)
+    const origin = probe.getBoundingClientRect()
+    probe.remove()
+
+    for (const rect of cover.getClientRects()) {
+        if (rect.width === 0 || rect.height === 0) continue
+        const overlay = document.createElement('span')
+        overlay.className = 'slop-overlay'
+        overlay.style.left = `${rect.left - origin.left}px`
+        overlay.style.top = `${rect.top - origin.top}px`
+        overlay.style.width = `${rect.width}px`
+        overlay.style.height = `${rect.height}px`
+        cover.appendChild(overlay)
+    }
+}
+
+let repaintTimer = null
+function repaintAllCovers() {
+    clearTimeout(repaintTimer)
+    repaintTimer = setTimeout(() => {
+        document.querySelectorAll('.slop-cover').forEach(paintCover)
+    }, 150)
+}
+window.addEventListener('resize', repaintAllCovers)
 
 function processElement(element, sentences) {
     // Collect all leaf text nodes with their cumulative offsets in the concatenated textContent
