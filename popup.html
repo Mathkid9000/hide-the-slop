@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      width: 260px;
+      padding: 16px;
+      background: #dededc;
+    }
+    h1 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #111;
+    }
+    #scan-all-btn {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      background: linear-gradient(20deg, #adae95, #55725e);
+      color: #dededc;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #scan-all-btn:hover:not(:disabled) { background: #355444; }
+    #scan-all-btn:disabled { opacity: 0.5; cursor: default; }
+    #sub-scan-btn {
+      font-size: 10px;
+      font-weight: 400;
+      margin-top: 0;
+      display: block;  
+      position: relative;
+      font-style: italic;
+    }
+    #word-count-badge {
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    #status {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+      min-height: 16px;
+      font-weight: 400;
+      width: 100%;
+      display: block;
+      text-align: center;
+    }
+    #site-list-section {
+      margin-top: 12px;
+      border-top: 1px solid #c8c8c6;
+      padding-top: 10px;
+      display: none;
+    }
+    #site-list-header {
+      font-size: 11px;
+      font-weight: 400;
+      color: #888;
+      margin-bottom: 10px;
+      margin-top: 2px;
+      width: 100%;
+      text-align: center;
+    }
+    .site-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e0e0de;
+    }
+    .site-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .site-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      border-radius: 2px;
+      object-fit: contain;
+    }
+    .site-icon-placeholder {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      border-radius: 2px;
+      background: #bbb;
+    }
+    .site-content { flex: 1; min-width: 0; }
+    .site-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #111;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .site-stats {
+      font-size: 10px;
+      color: #777;
+      margin: 2px 0 3px;
+    }
+    .site-bar-wrap {
+      height: 5px;
+      border-radius: 3px;
+      background: #d4d4d2;
+      overflow: hidden;
+      display: flex;
+    }
+    .site-bar-ai  { height: 100%; background: #52621e; }
+    .site-bar-real { height: 100%; background: #879f32; }
+    .site-bar-label {
+      font-size: 9px;
+      color: #888;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hide the Slop</h1>
+  <button id="scan-all-btn" disabled>
+    <div style="display: inline; text-align: left">
+      <span style="display: block">Scan Page</span>
+      <span id="sub-scan-btn">$10.00 - $0.03 = $99.97</span>
+    </div>
+    <span id="word-count-badge">...</span>
+  </button>
+  <div id="status">Loading page data...</div>
+  <div id="site-list-section">
+    <div id="site-list-header">Visited Sites</div>
+    <div id="site-list"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+    "name": "hide-the-slop",
+    "description": "yes",
+    "version": "1.0",
+    "manifest_version": 3,
+    "permissions": [
+        "declarativeContent", "tabs", "activeTab", "storage", "identity", "identity.email", "scripting"
+    ],
+    "content_scripts": [
+        {
+            "js": ["content.js"],
+            "css": ["content.css"],
+            "matches": [
+                "https://*/*"
+            ]
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["image.jpg", "transparent.jpg"],
+            "matches": ["https://*/*"]
+        }
+    ],
+    "host_permissions": [
+        "https://*/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html"
+    }
+  }

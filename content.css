@@ -1,0 +1,18 @@
+.hts-uncovered {
+    isolation: isolate;
+    background-color: rgba(0,0,0,0.05);
+}
+
+.hts-uncovered::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--slop-image-url);
+    filter: contrast(0.4) brightness(1.6);
+    background-size: 100px 100px;
+    background-repeat: repeat;
+    background-position: center;
+    opacity: 0.2;
+    z-index: -1;
+    pointer-events: none;
+}
