@@ -9,13 +9,16 @@ let SITE_DATA = {}
 let AI_SENTENCES = []
 let NON_AI_SENTENCES = []
 let TRACKED_ELEMENTS = []
+
 let scanProgress = null
 const currentSite = window.location.href.split('://')[1].split('/')[0]
 console.log("CURRENT SITE:", currentSite, window.location.href)
 
 function load_window() {
-    getTextBoxes()
+    // getTextBoxes()
     setupMutationObserver()
+    updatePageText()
+    autoHideSentences()
 }
 
 chrome.storage.local.get([ 'site_data' ], data => {
@@ -42,6 +45,55 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
 })
 
+function getPageText() {
+    const text = document.body.innerText
+    const prescreened = preScreenText(text)
+    let filtered = prescreened.filteredText
+
+    filtered = filtered.split('.').filter(sentence => {
+        let count = 0
+        let index = 0
+        while (filtered.indexOf(sentence.trim(), index) !== -1) {
+            if (count >= 1) break
+            else count++
+            index = filtered.indexOf(sentence.trim(), index) + sentence.trim().length
+        }
+
+        return count == 1
+    }).join('.')
+
+    filtered = filtered.split('\n').filter(sentence => {
+        let count = 0
+        let index = 0
+        while (filtered.indexOf(sentence.trim(), index) !== -1) {
+            if (count >= 1) break
+            else count++
+            index = filtered.indexOf(sentence.trim(), index) + sentence.trim().length
+        }
+
+        return count == 1
+    }).join('\n')
+
+    prescreened.filteredText = filtered
+    return prescreened
+}
+
+function updatePageText() {
+    const data = getPageText()
+    const totalWords = data.filteredText.replaceAll('  ', ' ').split(' ').length
+    const totalAiChars = data.removedAiCharacters
+    const totalNonAiChars = data.removedNonAiCharacters
+    const totalChars = data.totalCharacters
+    const scannedPct = totalChars > 0 ? ((totalAiChars + totalNonAiChars) / totalChars * 100).toFixed(1) : '0.0'
+    const aiPct = totalChars > 0 ? (totalAiChars / totalChars * 100).toFixed(1) : '0.0'
+    const realPct = totalChars > 0 ? (totalNonAiChars / totalChars * 100).toFixed(1) : '0.0'
+
+    new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "updateText", data: { totalWords, scannedPct, aiPct, realPct, text: data.filteredText } }, (response) => { });
+    })
+}
+
+/*
 function getTextBoxes() {
     console.log(document.body)
     const textTags = [ 'p', 'span' ]
@@ -58,67 +110,72 @@ function getTextBoxes() {
         if (textBoxes[i].style.display === 'none') continue
         if (textBoxes.filter(e => e.contains(textBoxes[i]) && Math.abs(TEXT_LENGTH_TARGET - e.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - textBoxes[i].innerText.length) && e !== textBoxes[i]
             || textBoxes[i].contains(e) && Math.abs(TEXT_LENGTH_TARGET - textBoxes[i].innerText.length) > Math.abs(TEXT_LENGTH_TARGET - e.innerText.length) && e !== textBoxes[i]).length > 0) continue
-        createScanButton(textBoxes[i])
+        // createScanButton(textBoxes[i])
         output.push(textBoxes[i])
     }
     TRACKED_ELEMENTS = output
     console.log(output)
     autoHideSentences()
 }
+    */
 
 function setupMutationObserver() {
     const textTags = new Set(['P', 'SPAN'])
 
     const observer = new MutationObserver(mutations => {
-        const candidates = []
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType !== Node.ELEMENT_NODE) continue
-                if (textTags.has(node.tagName)) candidates.push(node)
-                candidates.push(...node.querySelectorAll('p, span'))
-            }
-        }
+        updatePageText()
+        // const candidates = []
+        // for (const mutation of mutations) {
+        //     for (const node of mutation.addedNodes) {
+        //         if (node.nodeType !== Node.ELEMENT_NODE) continue
+        //         if (textTags.has(node.tagName)) candidates.push(node)
+        //         candidates.push(...node.querySelectorAll('p, span'))
+        //     }
+        // }
 
-        const newElements = candidates.filter(el => {
-            if (el.innerText.length <= TEXT_LENGTH_THRESHOLD) return false
-            if (el.style.display === 'none') return false
-            if (el.querySelector('.hts-scan-btn')) return false
-            if (TRACKED_ELEMENTS.includes(el)) return false
-            if (TRACKED_ELEMENTS.some(tracked =>
-                tracked.contains(el) &&
-                Math.abs(TEXT_LENGTH_TARGET - tracked.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length)
-            )) return false
-            return true
-        })
+        // const newElements = candidates.filter(el => {
+        //     if (el.innerText.length <= TEXT_LENGTH_THRESHOLD) return false
+        //     if (el.style.display === 'none') return false
+        //     if (el.querySelector('.hts-scan-btn')) return false
+        //     if (TRACKED_ELEMENTS.includes(el)) return false
+        //     if (TRACKED_ELEMENTS.some(tracked =>
+        //         tracked.contains(el) &&
+        //         Math.abs(TEXT_LENGTH_TARGET - tracked.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length)
+        //     )) return false
+        //     return true
+        // })
 
-        const filtered = newElements.filter(el =>
-            !newElements.some(other => other !== el && (
-                other.contains(el) && Math.abs(TEXT_LENGTH_TARGET - other.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) ||
-                el.contains(other) && Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) > Math.abs(TEXT_LENGTH_TARGET - other.innerText.length)
-            ))
-        )
+        // const filtered = newElements.filter(el =>
+        //     !newElements.some(other => other !== el && (
+        //         other.contains(el) && Math.abs(TEXT_LENGTH_TARGET - other.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) ||
+        //         el.contains(other) && Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) > Math.abs(TEXT_LENGTH_TARGET - other.innerText.length)
+        //     ))
+        // )
 
-        for (const el of filtered) {
-            createScanButton(el)
-            TRACKED_ELEMENTS.push(el)
-            if (AI_SENTENCES.length > 0) processElement(el, AI_SENTENCES)
-        }
+        // for (const el of filtered) {
+        //     createScanButton(el)
+        //     TRACKED_ELEMENTS.push(el)
+        //     if (AI_SENTENCES.length > 0) processElement(el, AI_SENTENCES)
+        // }
     })
 
     observer.observe(document.body, { childList: true, subtree: true })
 }
 
 function autoHideSentences() {
+    console.log("sdfsdf", AI_SENTENCES)
     if (AI_SENTENCES.length === 0) return
-    TRACKED_ELEMENTS.forEach(el => processElement(el, AI_SENTENCES))
+    processElement(document.body, AI_SENTENCES)
 }
 
+ //no purpose
 function updateAllButtonLabels() {
     document.querySelectorAll('.hts-scan-btn').forEach(btn => {
         if (btn.dataset.innerText) updateScanButtonLabel(btn, btn.dataset.innerText)
     })
 }
 
+/*
 function updateScanButtonLabel(button, innerText) {
     const { filteredText, removedAiCharacters, removedNonAiCharacters, totalCharacters } = preScreenText(innerText)
     const words = filteredText.trim().length > 0 ? filteredText.split(/\s+/).filter(Boolean).length : 0
@@ -142,34 +199,35 @@ function updateScanButtonLabel(button, innerText) {
         button.textContent = `Scan for AI (${words} words)`
     }
 }
+    */
 
 function createScanButton(element) {
     const parentOverlay = document.createElement('div')
     parentOverlay.style = "position: relative; display: block; left: 0; top: 0; width: 100%; height: 100%; background-color: none"
 
-    const button = document.createElement('button')
-    const innerText = element.innerText.replace("Scan for AI", "").replaceAll("  ", " ").trim()
-    button.className = 'hts-scan-btn'
-    button.dataset.innerText = innerText
-    button.style = "position: absolute;background-color: white;display: block;font-size: 10px;color: black;line-height: 10px;padding: 5px;top: 5px; right: 5px; border-radius: 4px; z-index: 9999"
-    button.onclick = () => runScan(innerText, element, button)
+    // const button = document.createElement('button')
+    // const innerText = element.innerText.replace("Scan for AI", "").replaceAll("  ", " ").trim()
+    // button.className = 'hts-scan-btn'
+    // button.dataset.innerText = innerText
+    // button.style = "position: absolute;background-color: white;display: block;font-size: 10px;color: black;line-height: 10px;padding: 5px;top: 5px; right: 5px; border-radius: 4px; z-index: 9999"
+    // button.onclick = () => runScan(innerText, element, button)
 
-    updateScanButtonLabel(button, innerText)
+    // updateScanButtonLabel(button, innerText)
 
-    let originalBorder = element ? (element.style.outline ?? "") : ""
-    button.onmouseenter = (e) => {
-        element.style.outline = "2px solid black"
-    }
-    button.onmouseleave = (e) => {
-        element.style.outline = originalBorder
-    }
+    // let originalBorder = element ? (element.style.outline ?? "") : ""
+    // button.onmouseenter = (e) => {
+    //     element.style.outline = "2px solid black"
+    // }
+    // button.onmouseleave = (e) => {
+    //     element.style.outline = originalBorder
+    // }
 
     // Replace child elements
     while (element.childNodes.length > 0) {
         parentOverlay.appendChild(element.firstChild)
     }
 
-    parentOverlay.appendChild(button)
+    // parentOverlay.appendChild(button)
     element.appendChild(parentOverlay)
 }
 
@@ -196,14 +254,11 @@ function preScreenText(text) {
     }
 
     let splits = filteredText.split('.')
-    console.log("sdffhouewidnojsdncosjdc", splits)
     splits = splits.filter(s => s.trim().length > SENTENCE_LENGTH_THRSHOLD)
-    console.log(splits)
     filteredText = splits.join('.')
 
     splits = filteredText.split('\n')
     splits = splits.filter(s => s.trim().length > SENTENCE_LENGTH_THRSHOLD)
-    console.log(splits)
     filteredText = splits.join('\n')
 
     return { filteredText, foundSentences, removedAiCharacters, removedNonAiCharacters, totalCharacters }
@@ -217,6 +272,7 @@ function getSiteIconUrl() {
 async function analyzeText(text) {
     return new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({ type: "analyzeText", text }, (response) => {
+            console.log('analyzed: ', response)
             if (chrome.runtime.lastError) {
                 reject(new Error(chrome.runtime.lastError.message));
             } else if (response.success) {
@@ -229,10 +285,11 @@ async function analyzeText(text) {
     });
 }
 
-async function runScan(innerText, element, button) {
-    button.textContent = "Scanning..."
+
+// TODO: Update this function \/
+async function runScan() {
     try {
-        const { filteredText, foundSentences } = preScreenText(innerText)
+        const { filteredText, foundSentences } = getPageText()
 
         let result
         if (filteredText.trim().length > 10) {
@@ -273,7 +330,7 @@ async function runScan(innerText, element, button) {
         SITE_DATA[currentSite] = {
             words_seen: existing.words_seen + (result.data.textWords ?? 0) + preScreenWordCount,
             ai_words_seen: existing.ai_words_seen + (result.data.aiWords ?? 0) + preScreenWordCount,
-            times_visited: existing.times_visited + 1,
+            times_visited: existing.times_visited,
             icon_url: iconUrl ?? existing.icon_url
         }
         chrome.storage.local.set({ site_data: SITE_DATA })
@@ -289,19 +346,18 @@ async function runScan(innerText, element, button) {
             chrome.storage.local.set({ scan_progress: { ...scanProgress } })
         }
 
-        hideSentences(element, result)
-        updateScanButtonLabel(button, innerText)
+        hideSentences(result)
+        // updateScanButtonLabel(button, innerText)
         console.log(result)
     } catch (err) {
-        button.textContent = "Error"
         console.error(err)
     }
 }
 
-function hideSentences(element, result) {
+function hideSentences(result) {
     const sentences = result.data?.h ?? []
     if (sentences.length === 0) return
-    processElement(element, sentences)
+    processElement(document.body, sentences)
 }
 
 function createCoverSpan(text) {
@@ -312,19 +368,18 @@ function createCoverSpan(text) {
     cover.style.cursor = 'pointer'
     cover.style.position = 'relative'
 
-    const originalStyle = cover.style.cssText
-    const coveredCSS = `cursor: pointer; color: transparent; border-radius: 3px; background-color: white; z-index: 9998; background-image: url("${SLOP_URL}"); background-position: center; background-size: 100px 100px; background-repeat: repeat; filter: contrast(0.4) brightness(1.6)`
-    cover.style.cssText = coveredCSS
+    // const originalStyle = cover.style.cssText
+    // cover.style.cssText = coveredCSS
+    cover.style.setProperty('--slop-image-url', `url("${SLOP_URL}")`)
+    cover.classList.add('hts-uncovered')
 
     cover.addEventListener('click', () => {
-        if (!cover.classList.contains('hts-uncovered')) {
-            cover.style.cssText = originalStyle
-            cover.style.setProperty('--slop-image-url', `url("${SLOP_URL}")`)
-            cover.classList.add('hts-uncovered')
-        } else {
-            cover.style.cssText = coveredCSS
-            cover.classList.remove('hts-uncovered')
-        }
+        // if (!cover.classList.contains('hts-uncovered')) {
+        //     cover.style.cssText = originalStyle
+        // } else {
+        //     cover.style.cssText = coveredCSS
+        //     cover.classList.remove('hts-uncovered')
+        // }
     })
 
     const originalOutline = cover.style.outline
@@ -428,34 +483,30 @@ function processElement(element, sentences) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'getWordCounts') {
-        const buttons = document.querySelectorAll('.hts-scan-btn')
-        let totalWords = 0
-        let totalAiChars = 0
-        let totalNonAiChars = 0
-        let totalChars = 0
-        buttons.forEach(btn => {
-            totalWords += parseInt(btn.dataset.wordCount || '0', 10)
-            totalAiChars += parseInt(btn.dataset.removedAiChars || '0', 10)
-            totalNonAiChars += parseInt(btn.dataset.removedNonAiChars || '0', 10)
-            totalChars += parseInt(btn.dataset.totalChars || '0', 10)
-        })
+        const data = getPageText()
+        const totalWords = data.filteredText.replaceAll('  ', ' ').split(' ').length
+        const totalAiChars = data.removedAiCharacters
+        const totalNonAiChars = data.removedNonAiCharacters
+        const totalChars = data.totalCharacters
         const scannedPct = totalChars > 0 ? ((totalAiChars + totalNonAiChars) / totalChars * 100).toFixed(1) : '0.0'
         const aiPct = totalChars > 0 ? (totalAiChars / totalChars * 100).toFixed(1) : '0.0'
         const realPct = totalChars > 0 ? (totalNonAiChars / totalChars * 100).toFixed(1) : '0.0'
-        sendResponse({ totalWords, count: buttons.length, scannedPct, aiPct, realPct })
+
+        sendResponse({ totalWords, scannedPct, aiPct, realPct, text: data.filteredText })
         return true
     }
     if (message.type === 'scanAll') {
-        const buttons = document.querySelectorAll('.hts-scan-btn')
-        const toScan = []
-        buttons.forEach(btn => {
-            const remainingChars = parseInt(btn.dataset.remainingChars, 10)
-            if (isNaN(remainingChars) || remainingChars > 10) toScan.push(btn)
-        })
-        scanProgress = { scanning: true, total: toScan.length, completed: 0, ai_words: 0, real_words: 0 }
-        chrome.storage.local.set({ scan_progress: { ...scanProgress } })
-        toScan.forEach(btn => btn.click())
-        sendResponse({ count: toScan.length })
+        runScan()
+        // const buttons = document.querySelectorAll('.hts-scan-btn')
+        // const toScan = []
+        // buttons.forEach(btn => {
+        //     const remainingChars = parseInt(btn.dataset.remainingChars, 10)
+        //     if (isNaN(remainingChars) || remainingChars > 10) toScan.push(btn)
+        // })
+        // scanProgress = { scanning: true, total: toScan.length, completed: 0, ai_words: 0, real_words: 0 }
+        // chrome.storage.local.set({ scan_progress: { ...scanProgress } })
+        // toScan.forEach(btn => btn.click())
+        sendResponse({ count: 1 })
         return true
     }
 })

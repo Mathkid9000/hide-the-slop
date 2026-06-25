@@ -9,7 +9,7 @@ let finalBalance;
 const MONEY_FORMATTER = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  });
+});
 
 chrome.storage.sync.get(['remain_balance'], data => {
     console.log(data)
@@ -20,7 +20,32 @@ chrome.storage.sync.get(['remain_balance'], data => {
 
 async function getActiveTabId() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    console.log(tab)
     return tab?.id
+}
+
+function updatePopupText(data) {
+    console.log(data.text.substring(0, 130))
+    const words = data.totalWords ?? 0
+    const scannedPct = data.scannedPct ?? '0.0'
+    const aiPct = data.aiPct ?? '0.0'
+    const realPct = data.realPct ?? '0.0'
+    badge.textContent = `${words.toLocaleString()} words`
+    if (words === 0) {
+        statusEl.textContent = 'No scannable sections found.'
+    } else {
+        btn.disabled = false
+        if (parseFloat(scannedPct) > 0) {
+            statusEl.textContent = `${scannedPct}% scanned — ${aiPct}% AI, ${realPct}% real`
+        } else {
+            statusEl.textContent = `Ready to scan`
+        }
+    }
+
+    const totalCost = moneyPer1000Words * words / 1000
+    finalBalance = remainingBalance - totalCost
+    console.log('set balance to', finalBalance)
+    moneyText.textContent = MONEY_FORMATTER.format(remainingBalance.toFixed(2)) + " - " + MONEY_FORMATTER.format(totalCost.toFixed(2)) + " = " + MONEY_FORMATTER.format(finalBalance.toFixed(2))
 }
 
 async function init() {
@@ -33,27 +58,7 @@ async function init() {
 
     try {
         const res = await chrome.tabs.sendMessage(tabId, { type: 'getWordCounts' })
-        const words = res.totalWords ?? 0
-        const count = res.count ?? 0
-        const scannedPct = res.scannedPct ?? '0.0'
-        const aiPct = res.aiPct ?? '0.0'
-        const realPct = res.realPct ?? '0.0'
-        badge.textContent = `${words.toLocaleString()} words`
-        if (count === 0) {
-            statusEl.textContent = 'No scannable sections found.'
-        } else {
-            btn.disabled = false
-            if (parseFloat(scannedPct) > 0) {
-                statusEl.textContent = `${scannedPct}% scanned — ${aiPct}% AI, ${realPct}% real`
-            } else {
-                statusEl.textContent = `${count} section${count !== 1 ? 's' : ''} ready to scan`
-            }
-        }
-
-        const totalCost = moneyPer1000Words * words / 1000
-        finalBalance = remainingBalance - totalCost
-        console.log('set balance to', finalBalance)
-        moneyText.textContent = MONEY_FORMATTER.format(remainingBalance.toFixed(2)) + " - " + MONEY_FORMATTER.format(totalCost.toFixed(2)) + " = " + MONEY_FORMATTER.format(finalBalance.toFixed(2))
+        updatePopupText(res)
     } catch {
         badge.textContent = '0 words'
         statusEl.textContent = 'Could not read page. Try reloading.'
@@ -70,6 +75,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
         statusEl.textContent = `Done — ${p.ai_words.toLocaleString()} AI words, ${p.real_words.toLocaleString()} real words`
         btn.disabled = false
         init()
+    }
+})
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "updateText") {
+        console.log("recieved message", message)
+        try {
+            updatePopupText(message.data)
+        } catch (err) {
+            console.error('updateText handler failed', err)
+        }
+        sendResponse({})
     }
 })
 
