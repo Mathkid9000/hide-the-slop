@@ -1,10 +1,10 @@
-window.addEventListener("load", () => setTimeout(load_window, 1000), false);
+window.addEventListener("load", () => setTimeout(load_window, 100), false);
 
 const TEXT_LENGTH_THRESHOLD = 100
 const SENTENCE_LENGTH_THRSHOLD = 20
 const TEXT_LENGTH_TARGET = 100
 const GROUP_PROXIMITY_THRESHOLD = 30
-const SLOP_URL =  chrome.runtime.getURL("image.jpg");
+const SLOP_URL = chrome.runtime.getURL("image.jpg");
 let SITE_DATA = {}
 let AI_SENTENCES = []
 let NON_AI_SENTENCES = []
@@ -13,8 +13,16 @@ let TRACKED_ELEMENTS = []
 const currentSite = window.location.href.split('://')[1].split('/')[0]
 console.log("CURRENT SITE:", currentSite, window.location.href)
 
+let pageObserver = null
+function extensionAlive() {
+    return !!(chrome.runtime && chrome.runtime.id)
+}
+function teardown() {
+    if (pageObserver) pageObserver.disconnect()
+    pageObserver = null
+}
+
 function load_window() {
-    // getTextBoxes()
     setupMutationObserver()
     updatePageText()
     autoHideSentences()
@@ -22,6 +30,15 @@ function load_window() {
 
 chrome.storage.local.get([ 'site_data' ], data => {
     SITE_DATA = data.site_data ?? {}
+
+    const iconUrl = getSiteIconUrl()
+    if (SITE_DATA[currentSite]) {
+        SITE_DATA[currentSite].times_visited++
+    } else {
+        SITE_DATA[currentSite] = { words_seen: 0, ai_words_seen: 0, times_visited: 1, icon_url: iconUrl, ai_words_seen_cumulative: 0 }
+    }
+
+    chrome.storage.local.set({ site_data: SITE_DATA })
     console.log('Loaded site data:', SITE_DATA)
 })
 
@@ -77,7 +94,9 @@ function getPageText() {
     return prescreened
 }
 
+let lastAIWordsSeen = 0
 function updatePageText() {
+    if (!extensionAlive()) { teardown(); return }
     const data = getPageText()
     const totalWords = data.filteredText.replaceAll('  ', ' ').split(' ').length
     const totalAiChars = data.removedAiCharacters
@@ -87,82 +106,35 @@ function updatePageText() {
     const aiPct = totalChars > 0 ? (totalAiChars / totalChars * 100).toFixed(1) : '0.0'
     const realPct = totalChars > 0 ? (totalNonAiChars / totalChars * 100).toFixed(1) : '0.0'
 
-    new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ type: "updateText", data: { totalWords, scannedPct, aiPct, realPct, text: data.filteredText } }, (response) => { });
-    })
-}
-
-/*
-function getTextBoxes() {
-    console.log(document.body)
-    const textTags = [ 'p', 'span' ]
-    let textBoxes = []
-
-    textTags.forEach(tag => {
-        const elements = Array.from(document.body.getElementsByTagName(tag))
-        textBoxes = textBoxes.concat(elements)
-    })
-
-    textBoxes = textBoxes.filter(tb => tb.innerText.length > TEXT_LENGTH_THRESHOLD);
-    output = []
-    for (var i = 0; i < textBoxes.length; i++) {
-        if (textBoxes[i].style.display === 'none') continue
-        if (textBoxes.filter(e => e.contains(textBoxes[i]) && Math.abs(TEXT_LENGTH_TARGET - e.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - textBoxes[i].innerText.length) && e !== textBoxes[i]
-            || textBoxes[i].contains(e) && Math.abs(TEXT_LENGTH_TARGET - textBoxes[i].innerText.length) > Math.abs(TEXT_LENGTH_TARGET - e.innerText.length) && e !== textBoxes[i]).length > 0) continue
-        // createScanButton(textBoxes[i])
-        output.push(textBoxes[i])
+    const AIWords = data.removedAiWords
+    const newAIWords = AIWords - lastAIWordsSeen
+    lastAIWordsSeen = AIWords
+    if (SITE_DATA[currentSite].ai_words_seen_cumulative) {
+        SITE_DATA[currentSite].ai_words_seen_cumulative += Math.abs(Math.round(newAIWords))
     }
-    TRACKED_ELEMENTS = output
-    console.log(output)
-    autoHideSentences()
+    else {
+        SITE_DATA[currentSite].ai_words_seen_cumulative = Math.abs(Math.round(newAIWords))
+    }
+
+    if (newAIWords > 10)
+        chrome.storage.local.set({ site_data: SITE_DATA })
+
+    chrome.runtime.sendMessage(
+        { type: "updateText", data: { totalWords, scannedPct, aiPct, realPct, text: data.filteredText } },
+        () => { void chrome.runtime.lastError } // popup may be closed; swallow "no receiver"
+    )
 }
-    */
 
 function setupMutationObserver() {
-    const textTags = new Set(['P', 'SPAN'])
-
-    const observer = new MutationObserver(mutations => {
+    pageObserver = new MutationObserver(() => {
+        if (!extensionAlive()) { teardown(); return }
         updatePageText()
-        // const candidates = []
-        // for (const mutation of mutations) {
-        //     for (const node of mutation.addedNodes) {
-        //         if (node.nodeType !== Node.ELEMENT_NODE) continue
-        //         if (textTags.has(node.tagName)) candidates.push(node)
-        //         candidates.push(...node.querySelectorAll('p, span'))
-        //     }
-        // }
-
-        // const newElements = candidates.filter(el => {
-        //     if (el.innerText.length <= TEXT_LENGTH_THRESHOLD) return false
-        //     if (el.style.display === 'none') return false
-        //     if (el.querySelector('.hts-scan-btn')) return false
-        //     if (TRACKED_ELEMENTS.includes(el)) return false
-        //     if (TRACKED_ELEMENTS.some(tracked =>
-        //         tracked.contains(el) &&
-        //         Math.abs(TEXT_LENGTH_TARGET - tracked.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length)
-        //     )) return false
-        //     return true
-        // })
-
-        // const filtered = newElements.filter(el =>
-        //     !newElements.some(other => other !== el && (
-        //         other.contains(el) && Math.abs(TEXT_LENGTH_TARGET - other.innerText.length) <= Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) ||
-        //         el.contains(other) && Math.abs(TEXT_LENGTH_TARGET - el.innerText.length) > Math.abs(TEXT_LENGTH_TARGET - other.innerText.length)
-        //     ))
-        // )
-
-        // for (const el of filtered) {
-        //     createScanButton(el)
-        //     TRACKED_ELEMENTS.push(el)
-        //     if (AI_SENTENCES.length > 0) processElement(el, AI_SENTENCES)
-        // }
     })
 
-    observer.observe(document.body, { childList: true, subtree: true })
+    pageObserver.observe(document.body, { childList: true, subtree: true })
 }
 
 function autoHideSentences() {
-    console.log("sdfsdf", AI_SENTENCES)
     if (AI_SENTENCES.length === 0) return
     processElement(document.body, AI_SENTENCES)
 }
@@ -174,52 +146,9 @@ function updateAllButtonLabels() {
     })
 }
 
-/*
-function updateScanButtonLabel(button, innerText) {
-    const { filteredText, removedAiCharacters, removedNonAiCharacters, totalCharacters } = preScreenText(innerText)
-    const words = filteredText.trim().length > 0 ? filteredText.split(/\s+/).filter(Boolean).length : 0
-    const scannedChars = removedAiCharacters + removedNonAiCharacters
-    const scannedPct = totalCharacters > 0 ? (scannedChars / totalCharacters * 100) : 0
-    const aiPct = totalCharacters > 0 ? (removedAiCharacters / totalCharacters * 100) : 0
-    const realPct = totalCharacters > 0 ? (removedNonAiCharacters / totalCharacters * 100) : 0
-
-    button.dataset.wordCount = words
-    button.dataset.removedAiChars = removedAiCharacters
-    button.dataset.removedNonAiChars = removedNonAiCharacters
-    button.dataset.totalChars = totalCharacters
-    button.dataset.remainingChars = filteredText.length
-
-    if (filteredText.trim().length <= 10) {
-        button.textContent = `Scanned: ${aiPct.toFixed(0)}% AI / ${realPct.toFixed(0)}% real`
-        button.style.backgroundColor = aiPct >= 50 ? '#ffdddd' : '#ddffee'
-    } else if (scannedPct > 0) {
-        button.textContent = `Scan (${words} words) — ${scannedPct.toFixed(0)}% scanned`
-    } else {
-        button.textContent = `Scan for AI (${words} words)`
-    }
-}
-    */
-
 function createScanButton(element) {
     const parentOverlay = document.createElement('div')
     parentOverlay.style = "position: relative; display: block; left: 0; top: 0; width: 100%; height: 100%; background-color: none"
-
-    // const button = document.createElement('button')
-    // const innerText = element.innerText.replace("Scan for AI", "").replaceAll("  ", " ").trim()
-    // button.className = 'hts-scan-btn'
-    // button.dataset.innerText = innerText
-    // button.style = "position: absolute;background-color: white;display: block;font-size: 10px;color: black;line-height: 10px;padding: 5px;top: 5px; right: 5px; border-radius: 4px; z-index: 9999"
-    // button.onclick = () => runScan(innerText, element, button)
-
-    // updateScanButtonLabel(button, innerText)
-
-    // let originalBorder = element ? (element.style.outline ?? "") : ""
-    // button.onmouseenter = (e) => {
-    //     element.style.outline = "2px solid black"
-    // }
-    // button.onmouseleave = (e) => {
-    //     element.style.outline = originalBorder
-    // }
 
     // Replace child elements
     while (element.childNodes.length > 0) {
@@ -234,6 +163,7 @@ function preScreenText(text) {
     const foundSentences = []
     let filteredText = text.replaceAll('\n', ' ')
     let removedAiCharacters = 0
+    let removedAiWords = 0
     let removedNonAiCharacters = 0
     const totalCharacters = text.length
 
@@ -243,6 +173,7 @@ function preScreenText(text) {
         const prelength = filteredText.length
         filteredText = filteredText.split(sentence.replaceAll('\n', ' ')).join(' ')
         removedAiCharacters += prelength - filteredText.length
+        removedAiWords += ((prelength - filteredText.length) / sentence.replaceAll('\n', ' ').length) * sentence.replaceAll('\n', ' ').split(' ').length
     }
 
     for (const sentence of NON_AI_SENTENCES) {
@@ -260,20 +191,25 @@ function preScreenText(text) {
     splits = splits.filter(s => s.trim().length > SENTENCE_LENGTH_THRSHOLD)
     filteredText = splits.join('\n')
 
-    return { filteredText, foundSentences, removedAiCharacters, removedNonAiCharacters, totalCharacters }
+    return { filteredText, foundSentences, removedAiCharacters, removedNonAiCharacters, totalCharacters, removedAiWords }
 }
 
 function getSiteIconUrl() {
-    const link = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')
-    return link ? link.href : null
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(window.location.hostname)}&sz=64`
 }
 
 async function analyzeText(text) {
     return new Promise((resolve, reject) => {
+        if (!extensionAlive()) { reject(new Error('Extension context invalidated')); return }
         chrome.runtime.sendMessage({ type: "analyzeText", text }, (response) => {
             console.log('analyzed: ', response)
             if (chrome.runtime.lastError) {
                 reject(new Error(chrome.runtime.lastError.message));
+            } else if (!response) {
+                // No lastError but a null response = the background listener never
+                // called sendResponse (e.g. the service worker went inactive before
+                // the fetch resolved, or it threw before returning true).
+                reject(new Error('No response from background (service worker may have been terminated)'));
             } else if (response.success) {
                 console.log(text, response.success)
                 resolve(response.data);
@@ -324,11 +260,12 @@ async function runScan() {
 
         // Update site_data keyed by hostname
         const iconUrl = getSiteIconUrl()
-        const existing = SITE_DATA[currentSite] ?? { words_seen: 0, ai_words_seen: 0, times_visited: 0, icon_url: iconUrl }
+        const existing = SITE_DATA[currentSite] ?? { words_seen: 0, ai_words_seen: 0, times_visited: 0, icon_url: iconUrl, ai_words_seen_cumulative: 0 }
         const preScreenWordCount = foundSentences.reduce((acc, s) => acc + s.split(/\s+/).length, 0)
         SITE_DATA[currentSite] = {
             words_seen: existing.words_seen + (result.data.textWords ?? 0) + preScreenWordCount,
             ai_words_seen: existing.ai_words_seen + (result.data.aiWords ?? 0) + preScreenWordCount,
+            ai_words_seen_cumulative: (existing.ai_words_seen_cumulative ?? 0) + (result.data.aiWords ?? 0),
             times_visited: existing.times_visited,
             icon_url: iconUrl ?? existing.icon_url
         }

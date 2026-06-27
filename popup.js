@@ -78,18 +78,24 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
 })
 
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-    if (message.type === "updateText") {
-        const activeId = await getActiveTabId()
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Only claim messages we actually handle. Returning a value (incl. an async
+    // function's Promise) for other types makes Chrome treat the popup as the
+    // responder and deliver our (empty) reply instead of the background's —
+    // which is what was turning analyzeText's response into null.
+    if (message.type !== "updateText") return
+
+    getActiveTabId().then(activeId => {
         console.log("recieved message", message, sender, activeId)
         try {
-            if (activeId === sender.tab.id)
+            if (activeId === sender.tab?.id)
                 updatePopupText(message.data)
         } catch (err) {
             console.error('updateText handler failed', err)
         }
         sendResponse({})
-    }
+    })
+    return true // keep the channel open for the async sendResponse above
 })
 
 btn.addEventListener('click', async () => {
@@ -119,6 +125,34 @@ function makePlaceholderIcon() {
     return ph
 }
 
+function deleteSite(site, item) {
+    chrome.storage.local.get(['site_data'], data => {
+        const siteData = data.site_data ?? {}
+        delete siteData[site]
+        chrome.storage.local.set({ site_data: siteData }, () => {
+            item.remove()
+            const container = document.getElementById('site-list')
+            if (container.children.length === 0) {
+                document.getElementById('site-list-section').style.display = 'none'
+            }
+        })
+    })
+}
+
+function makeDeleteActions(site, item) {
+    const actions = document.createElement('div')
+    actions.className = 'site-actions'
+
+    const deleteBtn = document.createElement('button')
+    deleteBtn.className = 'site-delete-btn'
+    deleteBtn.textContent = '✕'
+    deleteBtn.title = 'Delete site data'
+    deleteBtn.addEventListener('click', () => deleteSite(site, item))
+
+    actions.appendChild(deleteBtn)
+    return actions
+}
+
 function renderSiteList(siteData) {
     const section = document.getElementById('site-list-section')
     const container = document.getElementById('site-list')
@@ -128,7 +162,7 @@ function renderSiteList(siteData) {
     entries.sort((a, b) => b[1].times_visited - a[1].times_visited)
     container.innerHTML = ''
     for (const [site, data] of entries) {
-        if (site === 'undefined') continue
+        if (site === 'undefined' || data.words_seen === 0) continue
         const aiWords = data.ai_words_seen ?? 0
         const totalWords = data.words_seen ?? 0
         const realWords = Math.max(0, totalWords - aiWords)
@@ -158,7 +192,7 @@ function renderSiteList(siteData) {
 
         const stats = document.createElement('div')
         stats.className = 'site-stats'
-        stats.textContent = `${data.times_visited} visit${data.times_visited !== 1 ? 's' : ''} · ${totalWords.toLocaleString()} words scanned`
+        stats.textContent = `${data.times_visited} visit${data.times_visited !== 1 ? 's' : ''} · ${(data.ai_words_seen_cumulative ?? 0).toLocaleString()} AI words seen`
         content.appendChild(stats)
 
         const barWrap = document.createElement('div')
@@ -181,6 +215,7 @@ function renderSiteList(siteData) {
         content.appendChild(barLabel)
 
         item.appendChild(content)
+        item.appendChild(makeDeleteActions(site, item))
         container.appendChild(item)
     }
 }
