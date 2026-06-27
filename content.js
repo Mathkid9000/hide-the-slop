@@ -10,7 +10,6 @@ let AI_SENTENCES = []
 let NON_AI_SENTENCES = []
 let TRACKED_ELEMENTS = []
 
-let scanProgress = null
 const currentSite = window.location.href.split('://')[1].split('/')[0]
 console.log("CURRENT SITE:", currentSite, window.location.href)
 
@@ -336,15 +335,13 @@ async function runScan() {
         chrome.storage.local.set({ site_data: SITE_DATA })
         console.log('Saved site data:', SITE_DATA)
 
-        if (scanProgress?.scanning) {
-            const aiW = (result.data.aiWords ?? 0) + preScreenWordCount
-            const totalW = (result.data.textWords ?? 0) + preScreenWordCount
-            scanProgress.completed++
-            scanProgress.ai_words += aiW
-            scanProgress.real_words += Math.max(0, totalW - aiW)
-            if (scanProgress.completed >= scanProgress.total) scanProgress.scanning = false
-            chrome.storage.local.set({ scan_progress: { ...scanProgress } })
-        }
+        const scanProgress = { scanning: false, ai_words: 0, real_words: 0 }
+        const aiW = (result.data.aiWords ?? 0) + preScreenWordCount
+        const totalW = (result.data.textWords ?? 0) + preScreenWordCount
+        scanProgress.completed++
+        scanProgress.ai_words += aiW
+        scanProgress.real_words += Math.max(0, totalW - aiW)
+        chrome.storage.local.set({ scan_progress: { ...scanProgress } })
 
         hideSentences(result)
         // updateScanButtonLabel(button, innerText)
@@ -522,6 +519,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return true
     }
     if (message.type === 'scanAll') {
+        chrome.storage.local.set({ scan_progress: { scanning: true, ai_words: 0, real_words: 0 } })
         runScan()
         // const buttons = document.querySelectorAll('.hts-scan-btn')
         // const toScan = []
@@ -529,10 +527,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         //     const remainingChars = parseInt(btn.dataset.remainingChars, 10)
         //     if (isNaN(remainingChars) || remainingChars > 10) toScan.push(btn)
         // })
-        // scanProgress = { scanning: true, total: toScan.length, completed: 0, ai_words: 0, real_words: 0 }
-        // chrome.storage.local.set({ scan_progress: { ...scanProgress } })
         // toScan.forEach(btn => btn.click())
-        sendResponse({ count: 1 })
+        sendResponse({ })
         return true
     }
 })

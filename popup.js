@@ -20,7 +20,6 @@ chrome.storage.sync.get(['remain_balance'], data => {
 
 async function getActiveTabId() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    console.log(tab)
     return tab?.id
 }
 
@@ -69,20 +68,23 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.scan_progress) return
     const p = changes.scan_progress.newValue
     if (!p) return
+    console.log('recieved scan', p)
     if (p.scanning) {
-        statusEl.textContent = `${p.completed}/${p.total} scanned — ${p.ai_words.toLocaleString()} AI words, ${p.real_words.toLocaleString()} real words`
+        statusEl.textContent = `Scanning...`
     } else {
-        statusEl.textContent = `Done — ${p.ai_words.toLocaleString()} AI words, ${p.real_words.toLocaleString()} real words`
+        statusEl.textContent = `${p.ai_words.toLocaleString()} AI words, ${p.real_words.toLocaleString()} real words`
         btn.disabled = false
         init()
     }
 })
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (message.type === "updateText") {
-        console.log("recieved message", message)
+        const activeId = await getActiveTabId()
+        console.log("recieved message", message, sender, activeId)
         try {
-            updatePopupText(message.data)
+            if (activeId === sender.tab.id)
+                updatePopupText(message.data)
         } catch (err) {
             console.error('updateText handler failed', err)
         }
@@ -104,8 +106,9 @@ btn.addEventListener('click', async () => {
 
     try {
         await chrome.tabs.sendMessage(tabId, { type: 'scanAll' })
-    } catch {
+    } catch (e) {
         statusEl.textContent = 'Error: could not trigger scan.'
+        console.log(e)
         btn.disabled = false
     }
 })
