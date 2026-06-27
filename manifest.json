@@ -23,7 +23,7 @@
     ],
     "web_accessible_resources": [
         {
-            "resources": ["image.jpg", "transparent.jpg"],
+            "resources": ["image.jpg"],
             "matches": ["https://*/*"]
         }
     ],
