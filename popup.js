@@ -2,20 +2,39 @@ const btn = document.getElementById('scan-all-btn')
 const moneyText = document.getElementById('sub-scan-btn')
 const badge = document.getElementById('word-count-badge')
 const statusEl = document.getElementById('status')
+const apiKeyInput = document.getElementById('api-key-input')
+const balanceInput = document.getElementById('balance-input')
 
 const moneyPer1000Words = 0.034
 let remainingBalance;
 let finalBalance;
+let lastData = null;
 const MONEY_FORMATTER = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
 });
 
-chrome.storage.sync.get(['remain_balance'], data => {
-    console.log(data)
-    if (!parseFloat(data['remain_balance'])) data = { 'remain_balance': 10 }
-    remainingBalance = data['remain_balance']
+chrome.storage.sync.get(['remain_balance', 'zerogpt_api_key'], data => {
+    // console.log(data)
+    remainingBalance = parseFloat(data['remain_balance'])
+    if (!remainingBalance) remainingBalance = 10
+    balanceInput.value = remainingBalance.toFixed(2)
     moneyText.textContent = MONEY_FORMATTER.format(remainingBalance)
+
+    apiKeyInput.value = data['zerogpt_api_key'] ?? ''
+})
+
+apiKeyInput.addEventListener('change', () => {
+    const key = apiKeyInput.value.trim()
+    chrome.storage.sync.set({ zerogpt_api_key: key }, () => { })
+})
+
+balanceInput.addEventListener('input', () => {
+    const value = parseFloat(balanceInput.value)
+    if (isNaN(value) || value < 0) return
+    remainingBalance = value
+    chrome.storage.sync.set({ remain_balance: value })
+    if (lastData) updatePopupText(lastData)
 })
 
 async function getActiveTabId() {
@@ -24,7 +43,8 @@ async function getActiveTabId() {
 }
 
 function updatePopupText(data) {
-    console.log(data.text.substring(0, 130))
+    lastData = data
+    // console.log(data.text.substring(0, 130))
     const words = data.totalWords ?? 0
     const scannedPct = data.scannedPct ?? '0.0'
     const aiPct = data.aiPct ?? '0.0'
@@ -43,7 +63,7 @@ function updatePopupText(data) {
 
     const totalCost = moneyPer1000Words * words / 1000
     finalBalance = remainingBalance - totalCost
-    console.log('set balance to', finalBalance)
+    // console.log('set balance to', finalBalance)
     moneyText.textContent = MONEY_FORMATTER.format(remainingBalance.toFixed(2)) + " - " + MONEY_FORMATTER.format(totalCost.toFixed(2)) + " = " + MONEY_FORMATTER.format(finalBalance.toFixed(2))
 }
 
@@ -68,13 +88,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.scan_progress) return
     const p = changes.scan_progress.newValue
     if (!p) return
-    console.log('recieved scan', p)
+    // console.log('recieved scan', p)
     if (p.scanning) {
         statusEl.textContent = `Scanning...`
     } else {
         statusEl.textContent = `${p.ai_words.toLocaleString()} AI words, ${p.real_words.toLocaleString()} real words`
         btn.disabled = false
         init()
+        refreshSiteList()
     }
 })
 
@@ -86,7 +107,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type !== "updateText") return
 
     getActiveTabId().then(activeId => {
-        console.log("recieved message", message, sender, activeId)
+        // console.log("recieved message", message, sender, activeId)
         try {
             if (activeId === sender.tab?.id)
                 updatePopupText(message.data)
@@ -108,7 +129,8 @@ btn.addEventListener('click', async () => {
 
     chrome.storage.sync.set({ 'remain_balance': finalBalance })
     remainingBalance = finalBalance
-    console.log('SET FINAL BALANCE:', finalBalance)
+    balanceInput.value = finalBalance.toFixed(2)
+    // console.log('SET FINAL BALANCE:', finalBalance)
 
     try {
         await chrome.tabs.sendMessage(tabId, { type: 'scanAll' })
@@ -159,7 +181,7 @@ function renderSiteList(siteData) {
     const entries = Object.entries(siteData)
     if (entries.length === 0) return
     section.style.display = 'block'
-    entries.sort((a, b) => b[1].times_visited - a[1].times_visited)
+    entries.sort((a, b) => b[1].ai_words_seen_cumulative - a[1].ai_words_seen_cumulative)
     container.innerHTML = ''
     for (const [site, data] of entries) {
         if (site === 'undefined' || data.words_seen === 0) continue
@@ -220,8 +242,12 @@ function renderSiteList(siteData) {
     }
 }
 
-chrome.storage.local.get(['site_data'], data => {
-    renderSiteList(data.site_data ?? {})
-})
+function refreshSiteList() {
+    chrome.storage.local.get(['site_data'], data => {
+        renderSiteList(data.site_data ?? {})
+    })
+}
+
+refreshSiteList()
 
 init()

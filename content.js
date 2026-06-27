@@ -1,14 +1,11 @@
 window.addEventListener("load", () => setTimeout(load_window, 100), false);
 
-const TEXT_LENGTH_THRESHOLD = 100
 const SENTENCE_LENGTH_THRSHOLD = 20
-const TEXT_LENGTH_TARGET = 100
 const GROUP_PROXIMITY_THRESHOLD = 30
 const SLOP_URL = chrome.runtime.getURL("image.jpg");
 let SITE_DATA = {}
 let AI_SENTENCES = []
 let NON_AI_SENTENCES = []
-let TRACKED_ELEMENTS = []
 
 const currentSite = window.location.href.split('://')[1].split('/')[0]
 console.log("CURRENT SITE:", currentSite, window.location.href)
@@ -39,13 +36,13 @@ chrome.storage.local.get([ 'site_data' ], data => {
     }
 
     chrome.storage.local.set({ site_data: SITE_DATA })
-    console.log('Loaded site data:', SITE_DATA)
+    // console.log('Loaded site data:', SITE_DATA)
 })
 
 chrome.storage.local.get([ 'ai_sentences', 'non_ai_sentences' ], data => {
     AI_SENTENCES = (data.ai_sentences ?? []).filter(s => s.trim().length >= SENTENCE_LENGTH_THRSHOLD).map(s => s.replaceAll('\n', ' '))
     NON_AI_SENTENCES = (data.non_ai_sentences ?? []).filter(s => s.trim().length >= SENTENCE_LENGTH_THRSHOLD).map(s => s.replaceAll('\n', ' '))
-    console.log('Loaded sentence data:', AI_SENTENCES.length, 'AI,', NON_AI_SENTENCES.length, 'non-AI')
+    // console.log('Loaded sentence data:', AI_SENTENCES.length, 'AI,', NON_AI_SENTENCES.length, 'non-AI')
 })
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -53,11 +50,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (changes.ai_sentences) {
         AI_SENTENCES = (changes.ai_sentences.newValue ?? []).filter(s => s.trim().length >= SENTENCE_LENGTH_THRSHOLD).map(s => s.replaceAll('\n', ' '))
         autoHideSentences()
-        updateAllButtonLabels()
     }
     if (changes.non_ai_sentences) {
         NON_AI_SENTENCES = (changes.non_ai_sentences.newValue ?? []).filter(s => s.trim().length >= SENTENCE_LENGTH_THRSHOLD).map(s => s.replaceAll('\n', ' '))
-        updateAllButtonLabels()
     }
 })
 
@@ -109,12 +104,10 @@ function updatePageText() {
     const AIWords = data.removedAiWords
     const newAIWords = AIWords - lastAIWordsSeen
     lastAIWordsSeen = AIWords
-    if (SITE_DATA[currentSite].ai_words_seen_cumulative) {
-        SITE_DATA[currentSite].ai_words_seen_cumulative += Math.abs(Math.round(newAIWords))
-    }
-    else {
-        SITE_DATA[currentSite].ai_words_seen_cumulative = Math.abs(Math.round(newAIWords))
-    }
+    // SITE_DATA[currentSite] is populated by an async storage.local.get, which may
+    // not have resolved by the time the mutation observer first fires.
+    const site = SITE_DATA[currentSite] ?? (SITE_DATA[currentSite] = { words_seen: 0, ai_words_seen: 0, times_visited: 1, icon_url: getSiteIconUrl(), ai_words_seen_cumulative: 0 })
+    site.ai_words_seen_cumulative = (site.ai_words_seen_cumulative ?? 0) + Math.abs(Math.round(newAIWords))
 
     if (newAIWords > 10)
         chrome.storage.local.set({ site_data: SITE_DATA })
@@ -137,26 +130,6 @@ function setupMutationObserver() {
 function autoHideSentences() {
     if (AI_SENTENCES.length === 0) return
     processElement(document.body, AI_SENTENCES)
-}
-
- //no purpose
-function updateAllButtonLabels() {
-    document.querySelectorAll('.hts-scan-btn').forEach(btn => {
-        if (btn.dataset.innerText) updateScanButtonLabel(btn, btn.dataset.innerText)
-    })
-}
-
-function createScanButton(element) {
-    const parentOverlay = document.createElement('div')
-    parentOverlay.style = "position: relative; display: block; left: 0; top: 0; width: 100%; height: 100%; background-color: none"
-
-    // Replace child elements
-    while (element.childNodes.length > 0) {
-        parentOverlay.appendChild(element.firstChild)
-    }
-
-    // parentOverlay.appendChild(button)
-    element.appendChild(parentOverlay)
 }
 
 function preScreenText(text) {
@@ -202,7 +175,7 @@ async function analyzeText(text) {
     return new Promise((resolve, reject) => {
         if (!extensionAlive()) { reject(new Error('Extension context invalidated')); return }
         chrome.runtime.sendMessage({ type: "analyzeText", text }, (response) => {
-            console.log('analyzed: ', response)
+            // console.log('analyzed: ', response)
             if (chrome.runtime.lastError) {
                 reject(new Error(chrome.runtime.lastError.message));
             } else if (!response) {
@@ -211,7 +184,7 @@ async function analyzeText(text) {
                 // the fetch resolved, or it threw before returning true).
                 reject(new Error('No response from background (service worker may have been terminated)'));
             } else if (response.success) {
-                console.log(text, response.success)
+                // console.log(text, response.success)
                 resolve(response.data);
             } else {
                 reject(new Error(response.error));
@@ -255,7 +228,7 @@ async function runScan() {
         }
         if (Object.keys(updates).length > 0) {
             chrome.storage.local.set(updates)
-            console.log('Saved:', Object.keys(updates).join(', '), '— AI:', AI_SENTENCES.length, 'non-AI:', NON_AI_SENTENCES.length)
+            // console.log('Saved:', Object.keys(updates).join(', '), '— AI:', AI_SENTENCES.length, 'non-AI:', NON_AI_SENTENCES.length)
         }
 
         // Update site_data keyed by hostname
@@ -270,19 +243,16 @@ async function runScan() {
             icon_url: iconUrl ?? existing.icon_url
         }
         chrome.storage.local.set({ site_data: SITE_DATA })
-        console.log('Saved site data:', SITE_DATA)
+        // console.log('Saved site data:', SITE_DATA)
 
-        const scanProgress = { scanning: false, ai_words: 0, real_words: 0 }
         const aiW = (result.data.aiWords ?? 0) + preScreenWordCount
         const totalW = (result.data.textWords ?? 0) + preScreenWordCount
-        scanProgress.completed++
-        scanProgress.ai_words += aiW
-        scanProgress.real_words += Math.max(0, totalW - aiW)
-        chrome.storage.local.set({ scan_progress: { ...scanProgress } })
+        chrome.storage.local.set({
+            scan_progress: { scanning: false, ai_words: aiW, real_words: Math.max(0, totalW - aiW) }
+        })
 
         hideSentences(result)
-        // updateScanButtonLabel(button, innerText)
-        console.log(result)
+        // console.log(result)
     } catch (err) {
         console.error(err)
     }
@@ -458,13 +428,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'scanAll') {
         chrome.storage.local.set({ scan_progress: { scanning: true, ai_words: 0, real_words: 0 } })
         runScan()
-        // const buttons = document.querySelectorAll('.hts-scan-btn')
-        // const toScan = []
-        // buttons.forEach(btn => {
-        //     const remainingChars = parseInt(btn.dataset.remainingChars, 10)
-        //     if (isNaN(remainingChars) || remainingChars > 10) toScan.push(btn)
-        // })
-        // toScan.forEach(btn => btn.click())
         sendResponse({ })
         return true
     }

@@ -61,6 +61,7 @@
       margin-top: 12px;
       border-top: 1px solid #c8c8c6;
       padding-top: 10px;
+      margin-bottom: 20px;
       display: none;
     }
     #site-list-header {
@@ -147,6 +148,41 @@
       color: #999;
     }
     .site-delete-btn:hover { color: #b33; }
+    #settings-section {
+      margin-top: 12px;
+      border-top: 1px solid #c8c8c6;
+      padding-top: 10px;
+    }
+    .settings-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 4px;
+    }
+    .settings-field {
+      width: 100%;
+      padding: 7px 9px;
+      font-size: 12px;
+      font-family: inherit;
+      border: 1px solid #c2c2bf;
+      border-radius: 6px;
+      background: #f4f4f2;
+      color: #111;
+      margin-bottom: 4px;
+    }
+    .settings-field:focus {
+      outline: none;
+      border-color: #55725e;
+      background: #fff;
+    }
+    .settings-field:last-of-type { margin-bottom: 6px; }
+    #settings-status {
+      font-size: 10px;
+      color: #55725e;
+      min-height: 12px;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -162,6 +198,12 @@
   <div id="site-list-section">
     <div id="site-list-header">Visited Sites</div>
     <div id="site-list"></div>
+  </div>
+  <div id="settings-section">
+    <label class="settings-label" for="api-key-input">ZeroGPT API Key</label>
+    <input id="api-key-input" class="settings-field" type="password" placeholder="Paste your API key" autocomplete="off" spellcheck="false">
+    <label class="settings-label" for="balance-input">Balance ($)</label>
+    <input id="balance-input" style="margin-bottom: 0;" class="settings-field" type="number" step="0.01" min="0" placeholder="10.00">
   </div>
   <script src="popup.js"></script>
 </body>
