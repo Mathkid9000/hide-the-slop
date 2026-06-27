@@ -1,6 +1,6 @@
 {
     "name": "hide — the — slop",
-    "description": "yes",
+    "description": "Allows the user to scan pages for AI generated text. All AI passages are identified and covered with \"AI SLOP.\"",
     "version": "1.0",
     "manifest_version": 3,
     "permissions": [
